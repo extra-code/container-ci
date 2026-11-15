@@ -1,0 +1,13 @@
+#:schema https://ocx.sh/schemas/project/v1.json
+# OCX project toolchain — managed by `ocx add` / `ocx remove`
+
+[tools]
+task = "ocx.sh/go-task/task:3.53.1"
+
+[group.lint.tools]
+shellcheck = "ocx.sh/shellcheck/shellcheck:0.11.0"
+shfmt = "ocx.sh/shfmt/shfmt:3.14.1"
+
+[group.build.tools]
+go = "ocx.sh/golang/go:1.26.9"
+task = "ocx.sh/go-task/task:3.53.1"

@@ -1,0 +1,226 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+# Build, check and test the Go commands of this module.
+#
+#   task build                                  # build every command under cmd/
+#   task build -- gitlab-container-executor     # build only the named command(s)
+#
+# Each command builds to build/bin/<name>. The build pulls no third-party modules, and
+# GOTOOLCHAIN=local forbids a toolchain download. Run targets as `ocx exec -g build -- task <name>`
+# to use the Go pinned in ocx.lock; a bare `task <name>` uses the host's Go.
+
+version: '3'
+
+env:
+  GOTOOLCHAIN: local
+
+vars:
+  TARGET_GOOS: darwin
+  TARGET_GOARCH: arm64
+  GO:
+    sh: |
+      command -v go && exit 0
+      [ -x /usr/local/go/bin/go ] && { echo /usr/local/go/bin/go; exit 0; }
+      exit 0
+  # The git tag of the commit, <tag>-<n>-g<sha>[-dirty] after it, or "dev" without tags or git.
+  VERSION_FROM_GIT:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  # The commit date, so two builds of one commit are identical.
+  DATE_FROM_GIT:
+    sh: git log -1 --format=%cs 2>/dev/null || echo ""
+  GOPATH:
+    sh: |
+      [ -n "{{ .GO }}" ] || exit 0
+      "{{ .GO }}" env GOPATH | cut -d: -f1
+  SH_PATHS: scripts githooks
+  # The module proxy of the environment, else the public one.
+  PROXY: '{{ .GOPROXY | default "https://proxy.golang.org,direct" }}'
+  STATICCHECK_VERSION: v0.8.1
+  GOVULNCHECK_VERSION: v1.8.0
+
+tasks:
+  default:
+    silent: true
+    cmd: task --list
+
+  lock:
+    desc: Re-resolve the tool pins of ocx.toml into ocx.lock.
+    cmd: ocx lock
+
+  hooks:install:
+    desc: Enable the versioned git hooks in githooks/ (format and private-infrastructure checks before every push).
+    cmds:
+      - git config core.hooksPath githooks
+      - echo "core.hooksPath -> githooks"
+
+  version:
+    desc: Print the version a build would carry.
+    silent: true
+    cmd: echo '{{ .VERSION | default .VERSION_FROM_GIT }}'
+
+  build:
+    desc: 'Build commands from cmd/ into build/bin/ - all, or a selection: build -- [NAME]...'
+    env:
+      GOOS: '{{ .TARGET_GOOS }}'
+      GOARCH: '{{ .TARGET_GOARCH }}'
+    vars:
+      STAMP: '{{ .VERSION | default .VERSION_FROM_GIT }}'
+      DATE: '{{ .BUILD_DATE | default .DATE_FROM_GIT }}'
+      CMDS:
+        sh: |
+          if [ -n "{{ .CLI_ARGS }}" ]; then
+            echo "{{ .CLI_ARGS }}"
+          else
+            find cmd -mindepth 2 -maxdepth 2 -name '*.go' | cut -d/ -f2 | sort -u
+          fi
+    preconditions:
+      - sh: test -n "{{ .GO }}"
+        msg: go not found - install the Go toolchain (or add it to PATH)
+      - sh: test -n "{{ .CMDS }}"
+        msg: no commands found under cmd/
+      # STAMP and DATE reach the shell inside the ldflags, so only a plain word is accepted. The
+      # template answers true or false itself, so the check never runs the value.
+      - sh: test '{{ regexMatch "^[0-9A-Za-z._+-]+$" .STAMP }}' = true
+        msg: VERSION may hold only letters, digits and the characters . _ + -
+      - sh: test '{{ regexMatch "^[0-9A-Za-z._+-]*$" .DATE }}' = true
+        msg: BUILD_DATE may hold only letters, digits and the characters . _ + -
+    cmds:
+      - for: { var: CMDS }
+        cmd: >-
+          {{ .GO }} build -trimpath
+          -ldflags "-X github.com/extra-code/container-ci/internal/version.Version={{ .STAMP }} -X github.com/extra-code/container-ci/internal/version.Date={{ .DATE }}"
+          -o build/bin/{{ .ITEM }} ./cmd/{{ .ITEM }}
+          && echo "built build/bin/{{ .ITEM }} ({{ .STAMP }})"
+
+  package:
+    desc: 'Build the OCX package into build/package/: task package VERSION=vX.Y.Z'
+    requires:
+      vars: [VERSION]
+    vars:
+      PKG_VERSION: '{{ trimPrefix "v" .VERSION }}'
+      ARCHIVE: build/package/container-ci-{{ .PKG_VERSION }}.tar.xz
+    preconditions:
+      # VERSION reaches the shell and the archive name, so only a semver tag is accepted.
+      - sh: test '{{ regexMatch "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$" .VERSION }}' = true
+        msg: VERSION must be vX.Y.Z or vX.Y.Z-prerelease
+      - sh: command -v ocx >/dev/null
+        msg: ocx not found - install it from https://ocx.sh
+    cmds:
+      - task: build
+        vars: { VERSION: '{{ .VERSION }}' }
+      - rm -rf build/package
+      - mkdir -p build/package/root/bin
+      - cp build/bin/gitlab-container-executor build/package/root/bin/
+      - >-
+        ocx package create build/package/root -p darwin/arm64 -m packaging/metadata.json --bin-scan
+        -i "container-ci:{{ .PKG_VERSION }}" -o "{{ .ARCHIVE }}"
+      - test -f "{{ .ARCHIVE }}" && test -f "build/package/container-ci-{{ .PKG_VERSION }}-metadata.json"
+      - echo "packaged {{ .ARCHIVE }}"
+
+  fmt:
+    desc: Check that every Go file is formatted.
+    # The file list comes from git: gofmt walks dot-directories such as an ocx object store.
+    preconditions:
+      - sh: test -n "{{ .GO }}"
+        msg: go not found - install the Go toolchain (or add it to PATH)
+    cmds:
+      - |
+        files="$(git ls-files --cached --others --exclude-standard '*.go')"
+        [ -n "$files" ] || exit 0
+        unformatted="$("$(dirname "{{ .GO }}")/gofmt" -l $files)"
+        [ -z "$unformatted" ] || { echo "gofmt needed:"; echo "$unformatted"; exit 1; }
+
+  fmt:fix:
+    desc: Rewrite every Go file into canonical format.
+    preconditions:
+      - sh: test -n "{{ .GO }}"
+        msg: go not found - install the Go toolchain (or add it to PATH)
+    cmds:
+      - |
+        files="$(git ls-files --cached --others --exclude-standard '*.go')"
+        [ -n "$files" ] || exit 0
+        "$(dirname "{{ .GO }}")/gofmt" -w -l $files
+
+  test:
+    desc: Run the offline quality gate - format check, go vet (also with the e2e tag), go test -race, script tests.
+    preconditions:
+      - sh: test -n "{{ .GO }}"
+        msg: go not found - install the Go toolchain (or add it to PATH)
+    cmds:
+      - task: fmt
+      - '{{ .GO }} vet ./...'
+      - '{{ .GO }} vet -tags e2e ./...'
+      - '{{ .GO }} test -race ./...'
+      - task: test:scripts
+
+  test:scripts:
+    desc: Test the shell scripts against a throwaway git repository.
+    cmd: sh scripts/check-private.test.sh
+
+  test:e2e:
+    desc: 'Drive the executor through a job against the real container CLI: test:e2e [IMAGE=ubuntu:26.04]'
+    # Needs running container system services; skips without them.
+    preconditions:
+      - sh: test -n "{{ .GO }}"
+        msg: go not found - install the Go toolchain (or add it to PATH)
+    env:
+      CONTAINER_CI_E2E_IMAGE: '{{ .IMAGE }}'
+    cmd: '{{ .GO }} test -tags e2e -run E2E -count=1 -v ./cmd/gitlab-container-executor/'
+
+  check:
+    desc: Run the full local gate - test, lint and vuln (static analysis and the vulnerability check need a module proxy).
+    cmds:
+      - task: test
+      - task: lint
+      - task: vuln
+
+  clean:
+    desc: Remove the build tree.
+    cmd: rm -rf build
+
+  lint:
+    desc: Lint everything - the Go module, the shell scripts, the SPDX headers and private infrastructure.
+    cmds:
+      - task: lint:spdx
+      - task: lint:private
+      - task: lint:go
+      - task: lint:sh
+
+  lint:spdx:
+    desc: Check that every source file carries the SPDX header.
+    cmd: scripts/check-spdx.sh
+
+  lint:private:
+    desc: Check that no tracked file names private infrastructure (private IPv4 ranges, local patterns).
+    cmd: scripts/check-private.sh
+
+  lint:sh:
+    desc: Check the shell scripts for defects and their formatting.
+    cmds:
+      - |
+        files="$(ocx exec -g lint -- shfmt -f {{ .SH_PATHS }})"
+        [ -n "$files" ] || { echo "no shell sources matched - discovery is broken" >&2; exit 1; }
+        ocx exec -g lint -- shellcheck $files
+      - ocx exec -g lint -- shfmt -i 2 -d {{ .SH_PATHS }}
+
+  lint:go:
+    desc: Run static analysis on the module (tool fetched on demand through the module proxy).
+    env:
+      GOPROXY: '{{ .PROXY }}'
+    preconditions:
+      - sh: test -n "{{ .GO }}"
+        msg: go not found - install the Go toolchain (or add it to PATH)
+    cmds:
+      - '{{ .GO }} install honnef.co/go/tools/cmd/staticcheck@{{ .STATICCHECK_VERSION }}'
+      - GOOS={{ .TARGET_GOOS }} GOARCH={{ .TARGET_GOARCH }} {{ .GOPATH }}/bin/staticcheck ./...
+
+  vuln:
+    desc: Run the vulnerability check on the module (tool fetched on demand through the module proxy).
+    env:
+      GOPROXY: '{{ .PROXY }}'
+    preconditions:
+      - sh: test -n "{{ .GO }}"
+        msg: go not found - install the Go toolchain (or add it to PATH)
+    cmds:
+      - '{{ .GO }} install golang.org/x/vuln/cmd/govulncheck@{{ .GOVULNCHECK_VERSION }}'
+      - GOOS={{ .TARGET_GOOS }} GOARCH={{ .TARGET_GOARCH }} {{ .GOPATH }}/bin/govulncheck ./...

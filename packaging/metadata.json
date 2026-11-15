@@ -1,0 +1,17 @@
+{
+  "$schema": "https://ocx.sh/schemas/metadata/v1.json",
+  "type": "bundle",
+  "version": 1,
+  "env": [
+    {
+      "key": "PATH",
+      "type": "path",
+      "required": true,
+      "value": "${installPath}/bin",
+      "visibility": "public"
+    }
+  ],
+  "binaries": [
+    "gitlab-container-executor"
+  ]
+}

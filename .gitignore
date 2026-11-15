@@ -1,0 +1,14 @@
+build/
+.DS_Store
+.ocx-data/
+.agents/worktrees/
+.handoffs/
+.ocx/
+.agents/retro/inbox/
+.claude/settings.local.json
+# Written by `grim install` from grimoire.lock
+.agents/skills/
+.claude/skills/
+.claude/rules/
+.mcp.json
+.tools/

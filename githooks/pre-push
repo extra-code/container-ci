@@ -1,0 +1,25 @@
+#!/usr/bin/env sh
+
+# SPDX-FileCopyrightText: 2026 Christian Semmelmann
+# SPDX-License-Identifier: Apache-2.0
+
+# Refuse a push whose Go sources are not formatted or whose tracked files name private
+# infrastructure.
+#
+# The checks run in well under a second because the Go toolchain is already materialized on a
+# developer machine. Bypass a single push with `git push --no-verify`. The GitHub workflow
+# .github/workflows/ci.yml runs both checks again, so a bypass delays the failure rather than
+# hiding it.
+#
+# Enabled by pointing git's core.hooksPath at this directory (`task hooks:install`).
+set -eu
+
+if command -v ocx >/dev/null 2>&1; then
+  # Same pinned toolchain the CI workflow resolves, straight out of the lockfile.
+  exec ocx exec -g build -- task fmt lint:private
+elif command -v task >/dev/null 2>&1; then
+  exec task fmt lint:private
+else
+  echo "pre-push: neither ocx nor task on PATH - skipping the format and private-infrastructure checks" >&2
+  echo "pre-push: the CI workflow still checks them, so a failing push fails there" >&2
+fi
