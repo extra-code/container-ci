@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-15
+
 ### Added
 
 - `gitlab-container-executor`, a GitLab Runner custom executor that runs each job on Apple `container`.
@@ -25,4 +27,5 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Releases as a GitHub release asset with `checksums.txt` and build provenance.
 - Releases as the signed OCX package `ghcr.io/extra-code/container-ci`.
 
-[Unreleased]: https://github.com/extra-code/container-ci/commits/main
+[Unreleased]: https://github.com/extra-code/container-ci/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/extra-code/container-ci/releases/tag/v0.1.0
