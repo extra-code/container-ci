@@ -1,0 +1,18 @@
+#:schema https://grimoire.rs/schemas/grimoire-config.schema.json
+[options]
+clients = ["claude", "agents"]
+
+[bundles]
+hex = "ghcr.io/michael-herwig/arcana/hex:latest"
+docs-essentials = "ghcr.io/ocx-sh/lore/docs-essentials:latest"
+go-essentials = "ghcr.io/ocx-sh/lore/go-essentials:latest"
+shell-essentials = "ghcr.io/ocx-sh/lore/shell-essentials:latest"
+grim-essentials = "ghcr.io/grimoire-rs/bundles/grim-essentials:latest"
+
+[skills]
+grim-usage = "ghcr.io/grimoire-rs/skills/grim-usage:0"
+
+[rules]
+
+[mcp]
+grim = "ghcr.io/grimoire-rs/mcp/grim:0"
