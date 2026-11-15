@@ -1,0 +1,73 @@
+# Acceptance jobs for the executor under a real GitLab Runner. Each job is
+# manual; README.md in this directory says how to run them and what to expect.
+
+stages:
+  - acceptance
+
+non-root:
+  stage: acceptance
+  when: manual
+  image: cgr.dev/chainguard/git:latest-dev@sha256:fd348662c297526db58dc05a971975327345b20bcdb3eda6d37d51c8a5139613
+  script:
+    - id
+    - test "$(id -u)" -ne 0
+    - git -C "$CI_PROJECT_DIR" rev-parse HEAD
+    - touch "$CI_PROJECT_DIR/written-by-job"
+    - |
+      echo "non-root: checkout and write as uid $(id -u)"
+  after_script:
+    - |
+      echo "non-root: after_script ran as uid $(id -u)"
+
+cancel:
+  stage: acceptance
+  when: manual
+  image: alpine:3.22
+  variables:
+    GIT_STRATEGY: none
+  script:
+    - |
+      sh -c 'trap "echo cancel: child received TERM; exit 0" TERM; while :; do sleep 1; done' &
+    - |
+      trap 'echo "cancel: script received TERM"; exit 143' TERM
+    - |
+      echo "cancel: waiting for the cancellation"
+    - sleep 600 & wait $!
+  after_script:
+    - |
+      echo "cancel: after_script ran"
+
+timeout:
+  stage: acceptance
+  when: manual
+  image: alpine:3.22
+  variables:
+    GIT_STRATEGY: none
+  timeout: 1m
+  script:
+    - |
+      trap 'echo "timeout: script received TERM"; exit 143' TERM
+    - |
+      echo "timeout: waiting for the job timeout"
+    - sleep 300 & wait $!
+  after_script:
+    - |
+      echo "timeout: after_script ran"
+
+script-timeout:
+  stage: acceptance
+  when: manual
+  image: alpine:3.22
+  variables:
+    GIT_STRATEGY: none
+    RUNNER_SCRIPT_TIMEOUT: 30s
+  timeout: 2m
+  script:
+    - |
+      trap 'echo "script-timeout: script received TERM"; exit 143' TERM
+    - |
+      echo "script-timeout: waiting for the script timeout"
+    - sleep 300 & wait $!
+  after_script:
+    - |
+      echo "script-timeout: after_script ran"
