@@ -1,0 +1,41 @@
+# Run by hand to announce tags that a release run did not announce, such as releases published
+# before the package was in the OCX index. The release workflow announces new releases itself.
+name: announce
+
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: Comma-separated registry tags to announce, such as 1.0.0,1.0,1,latest
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  announce:
+    name: announce tags to the OCX index
+    # The release environment's token must never reach a workflow edited on another branch.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    steps:
+      - uses: ocx-sh/setup-ocx@25fa771f8572572dc64528db89560de68a163a0e # v1.4.0
+        with:
+          version: 0.6.5
+          project: ""
+          cache: false
+      - name: Announce the tags
+        env:
+          OCX_ANNOUNCE_TOKEN: ${{ secrets.OCX_ANNOUNCE_TOKEN }}
+          OCX_INDEX_FORK: ${{ vars.OCX_INDEX_FORK }}
+          TAGS: ${{ inputs.tags }}
+        run: |
+          printf '%s\n' "$TAGS" | tr ',' '\n' >tags.txt
+          # Only registry tag names reach the index pull request.
+          if grep -Evq '^[0-9A-Za-z][0-9A-Za-z._-]{0,127}$' tags.txt; then
+            echo "error: tags must be a comma-separated list of registry tags" >&2
+            exit 1
+          fi
+          ocx package announce --tags-file tags.txt --fork "$OCX_INDEX_FORK" extra-code/container-ci

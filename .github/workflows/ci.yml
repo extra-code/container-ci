@@ -1,0 +1,43 @@
+# The quality gate: format, vet (also with the e2e tag), race tests, SPDX headers, private
+# infrastructure, shell lint, static analysis, the vulnerability check and an OCX package dry
+# run. The release workflow calls this workflow before it builds anything.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  gate:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Installs ocx and pulls every tool pinned in ocx.lock: the Go toolchain, the task runner
+      # and the shell linters.
+      - uses: ocx-sh/setup-ocx@25fa771f8572572dc64528db89560de68a163a0e # v1.4.0
+        with:
+          version: 0.6.5
+      - name: Test (format, vet, vet with the e2e tag, race tests, script tests)
+        run: ocx exec -g build -- task test
+      - name: Lint (SPDX, private infrastructure, static analysis, shell)
+        run: ocx exec -g build -- task lint
+      - name: Vulnerability check
+        run: ocx exec -g build -- task vuln
+      # The release builds this package from the tag; building it here catches a broken package first.
+      - name: OCX package dry run
+        run: ocx exec -g build -- task package VERSION=v0.0.0-ci
