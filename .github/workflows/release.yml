@@ -182,9 +182,12 @@ jobs:
           ocx package push "$@" --tags-file tags.txt -i "ghcr.io/extra-code/container-ci:${VERSION}" "$ARCHIVE"
           echo "tags=$(paste -sd, tags.txt)" >>"$GITHUB_OUTPUT"
       # Anonymous on purpose: with GITHUB_TOKEN, ghcr.io answers the referrers endpoint with 401
-      # instead of 404, so ocx never falls back to the sha256-<digest> tag. It also checks what users
-      # see. Right after a push the anonymous call can answer 401 too and ocx exits 69, so only 69 retries.
+      # instead of 404, so ocx never falls back to the sha256-<digest> tag. The fresh OCX_HOME must
+      # stay: with the pushed tag in the local index, ocx asks for the referrers without a token,
+      # ghcr.io answers 401 and every attempt exits 69. Exit 69 retries for a registry not ready yet.
       - name: Verify the pushed signature
+        env:
+          OCX_HOME: ${{ runner.temp }}/ocx-verify
         run: |
           for attempt in $(seq 1 20); do
             rc=0
