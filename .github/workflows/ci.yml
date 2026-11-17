@@ -29,9 +29,11 @@ jobs:
           persist-credentials: false
       # Installs ocx and pulls every tool pinned in ocx.lock: the Go toolchain, the task runner
       # and the shell linters.
-      - uses: ocx-sh/setup-ocx@25fa771f8572572dc64528db89560de68a163a0e # v1.4.0
+      - uses: ocx-sh/setup-ocx@eaeb6788da6191868a1310cc2bba93233b586369 # v1.4.1
         with:
-          version: 0.6.5
+          version: 0.6.8
+      - name: Check that ocx.lock matches ocx.toml
+        run: ocx lock --check
       - name: Test (format, vet, vet with the e2e tag, race tests, script tests)
         run: ocx exec -g build -- task test
       - name: Lint (SPDX, private infrastructure, static analysis, shell)
