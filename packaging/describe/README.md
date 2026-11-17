@@ -20,7 +20,6 @@ container-ci is an independent project. It is not affiliated with or endorsed by
 Install the package behind a link, so the runner keeps one path across upgrades:
 
 ```bash
-mkdir -p ~/.container-ci
 ocx package install --link ~/.container-ci/executor ghcr.io/extra-code/container-ci:<version>
 ```
 

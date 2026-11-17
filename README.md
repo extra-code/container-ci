@@ -36,7 +36,6 @@ ocx package verify -p darwin/arm64 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ghcr.io/extra-code/container-ci:<version>
 
-mkdir -p ~/.container-ci
 ocx package install --link ~/.container-ci/executor ghcr.io/extra-code/container-ci:<version>
 ```
 
